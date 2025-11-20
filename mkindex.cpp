@@ -16,9 +16,12 @@
 #include <vector>
 #include <map>
 #include "CommandLineParser.h"
+#include <unordered_map>
 
 using namespace std;
 namespace fs = std::filesystem;
+
+static unordered_map<string, int> wordIdCache;
 
 static int onDatabaseEntry(void* userdata, int argc, char** argv, char** azColName);
 static string readFile(const string& filepath);
@@ -43,16 +46,22 @@ void indexDocument(sqlite3* database, const string& documentUrl, const vector<st
     }
     int wordId;
     for (const auto& [word, frequency] : wordFrequency) {
-        wordId = -1;
-        sql = "INSERT OR IGNORE INTO words (word) VALUES ('" + word + "');";
-        if (sqlite3_exec(database, sql.c_str(), NULL, 0, &databaseErrorMessage) != SQLITE_OK) {
-            cout << "Error: " << sqlite3_errmsg(database) << endl;
+        auto it = wordIdCache.find(word);
+        if (it == wordIdCache.end()) {
+            wordId = -1;
+            sql = "INSERT OR IGNORE INTO words (word) VALUES ('" + word + "');";
+            if (sqlite3_exec(database, sql.c_str(), NULL, 0, &databaseErrorMessage) != SQLITE_OK) {
+                cout << "Error: " << sqlite3_errmsg(database) << endl;
+            }
+            sql = "SELECT id FROM words WHERE word ='" + word + "';";
+            if (sqlite3_exec(database, sql.c_str(), onDatabaseEntry, &wordId, &databaseErrorMessage) != SQLITE_OK) {
+                cout << "Error: " << sqlite3_errmsg(database) << endl;
+            }
+            wordIdCache[word] = wordId;
         }
-        sql = "SELECT id FROM words WHERE word ='" + word + "';";
-        if (sqlite3_exec(database, sql.c_str(), onDatabaseEntry, &wordId, &databaseErrorMessage) != SQLITE_OK) {
-            cout << "Error: " << sqlite3_errmsg(database) << endl;
+        else {
+            wordId = it->second;
         }
-
         sql ="INSERT OR REPLACE INTO word_occurrences (word_id, document_id, frequency)"
              "VALUES ('" + to_string(wordId) + "','" + to_string(documentId) + "','" + to_string(frequency) + "');";
         if (sqlite3_exec(database, sql.c_str(), NULL, 0, &databaseErrorMessage) != SQLITE_OK) {
@@ -88,7 +97,7 @@ static string removeHTMLTags(const string& html) {
 static vector<string> extractWords(const string& text) {
     vector<string> words;
     string word;
-    for (char c : text) {
+    for (unsigned char c : text) {
         if (isalnum(c)) {
             word += tolower(c);
         }
@@ -113,6 +122,7 @@ static int onDatabaseEntry(void *userdata,
 int main(int argc,
          const char *argv[])
 {
+    wordIdCache.clear();
     CommandLineParser parser(argc, argv);
 
     // Configuration
@@ -145,23 +155,21 @@ int main(int argc,
     // Create a sample table
     cout << "Creating table..." << endl;
     if (sqlite3_exec(database,
-                        "CREATE TABLE documents("
+                        "CREATE TABLE IF NOT EXISTS documents("
                             "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                             "url TEXT UNIQUE NOT NULL"
                         ");"
-                        "CREATE TABLE words("
+                        "CREATE TABLE IF NOT EXISTS words("
                             "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                             "word TEXT UNIQUE NOT NULL"
                         ");"
-                        "CREATE TABLE word_occurrences("
+                        "CREATE TABLE IF NOT EXISTS word_occurrences("
                             "word_id INTEGER,"
                             "document_id INTEGER,"
                             "frequency INTEGER,"
                             "FOREIGN KEY(word_id) REFERENCES words(id),"
                             "FOREIGN KEY(document_id) REFERENCES documents(id)"
-                        ");"
-                        "CREATE INDEX idx_word ON words(word);"
-                        "CREATE INDEX idx_word_occurrences ON word_occurrences(word_id, document_id);",
+                        ");",
                      NULL,
                      0,
                      &databaseErrorMessage) != SQLITE_OK)
@@ -190,9 +198,12 @@ int main(int argc,
                     &databaseErrorMessage) != SQLITE_OK)
         cout << "Error: " << sqlite3_errmsg(database) << endl;
 
-   
-    int fileCount = 0;
 
+    cout << "Beginning transaction..." << endl;
+    if (sqlite3_exec(database, "BEGIN TRANSACTION;", NULL, 0, &databaseErrorMessage) != SQLITE_OK)
+        cout << "Error: " << sqlite3_errmsg(database) << endl;
+
+    int fileCount = 0;
     for (const auto& entry : fs::directory_iterator(wwwPath + "/wiki")) {
         if (entry.path().extension() == ".html") {
             string filepath = entry.path().string();
@@ -212,11 +223,27 @@ int main(int argc,
 
             // 4. Guardar en la base de datos
             string documentUrl = "/wiki/" + filename;
+
+            cout << "Indexando: " << filename << endl;
             indexDocument(database, documentUrl, words);
 
             fileCount++;
         }
     }
+
+    cout << "Committing transaction..." << endl;
+    if (sqlite3_exec(database, "COMMIT;", NULL, 0, &databaseErrorMessage) != SQLITE_OK)
+        cout << "Error: " << sqlite3_errmsg(database) << endl;
+
+    cout << "Creating indexes..." << endl;
+    if (sqlite3_exec(database,
+        "CREATE INDEX IF NOT EXISTS idx_word ON words(word);"
+        "CREATE INDEX IF NOT EXISTS idx_word_occurrences "
+        "ON word_occurrences(word_id, document_id);",
+        NULL,
+        0,
+        &databaseErrorMessage) != SQLITE_OK)
+            cout << "Error: " << sqlite3_errmsg(database) << endl;
 
     // Close database
     cout << "Closing database..." << endl;
