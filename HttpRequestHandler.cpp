@@ -10,6 +10,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sqlite3.h>     
+#include <chrono>        
+#include <algorithm>     
+
 
 #include "HttpRequestHandler.h"
 
@@ -94,7 +98,51 @@ bool HttpRequestHandler::handleRequest(string url,
 
         // YOUR JOB: fill in results
         float searchTime = 0.1F;
+
+        auto start = chrono::high_resolution_clock::now();
+
+        sqlite3* db;
+        sqlite3_open("index.db", &db);
+
+        int wordId = -1;
+        sqlite3_stmt* stmt;
+
+        string sql = "SELECT id FROM words WHERE word = '" + searchString + "';";
+        if(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL) != SQLITE_OK){ 
+            cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << endl; }
+        else if (sqlite3_step(stmt) == SQLITE_ROW)
+            wordId = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+
+        vector<pair<string, int>> docs;
+
+        if (wordId != -1) {
+            sql = "SELECT documents.url, word_occurrences.frequency "
+                "FROM word_occurrences "
+                "JOIN documents ON documents.id = word_occurrences.document_id "
+                "WHERE word_occurrences.word_id = " + to_string(wordId) + ";";
+
+            sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL);
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                string url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                int freq = sqlite3_column_int(stmt, 1);
+                docs.push_back({ url, freq });
+            }
+            sqlite3_finalize(stmt);
+
+            sort(docs.begin(), docs.end(), [](auto& a, auto& b) {
+                return a.second > b.second;
+                });
+        }
+
+        sqlite3_close(db);
+
         vector<string> results;
+        for (auto& d : docs)
+            results.push_back(d.first);
+
+        auto end = chrono::high_resolution_clock::now();
+        searchTime = chrono::duration<float>(end - start).count();
 
         // Print search results
         responseString += "<div class=\"results\">" + to_string(results.size()) +
