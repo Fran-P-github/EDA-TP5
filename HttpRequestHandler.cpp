@@ -12,12 +12,27 @@
 #include <iostream>
 #include <sqlite3.h>     
 #include <chrono>        
-#include <algorithm>     
-
+#include <algorithm>  
+#include <sstream>
+#include <vector>
+#include <string>
+#include <unordered_map>
 
 #include "HttpRequestHandler.h"
 
 using namespace std;
+
+std::vector<std::string> splitBySpaces(const std::string& text) { //function to split string by spaces
+    std::istringstream iss(text);
+    std::vector<std::string> words;
+    std::string word;
+
+    while (iss >> word) {
+        words.push_back(word);
+    }
+
+    return words;
+}
 
 HttpRequestHandler::HttpRequestHandler(string homePath)
 {
@@ -104,36 +119,44 @@ bool HttpRequestHandler::handleRequest(string url,
         sqlite3* db;
         sqlite3_open("index.db", &db);
 
-        int wordId = -1;
         sqlite3_stmt* stmt;
 
-        string sql = "SELECT id FROM words WHERE word = '" + searchString + "';";
-        if(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL) != SQLITE_OK){ 
-            cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << endl; }
-        else if (sqlite3_step(stmt) == SQLITE_ROW)
-            wordId = sqlite3_column_int(stmt, 0);
-        sqlite3_finalize(stmt);
+		std::vector<std::string> words = splitBySpaces(searchString);
+        unordered_map<string, int> score;
 
-        vector<pair<string, int>> docs;
-
-        if (wordId != -1) {
-            sql = "SELECT documents.url, word_occurrences.frequency "
-                "FROM word_occurrences "
-                "JOIN documents ON documents.id = word_occurrences.document_id "
-                "WHERE word_occurrences.word_id = " + to_string(wordId) + ";";
-
-            sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL);
-            while (sqlite3_step(stmt) == SQLITE_ROW) {
-                string url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-                int freq = sqlite3_column_int(stmt, 1);
-                docs.push_back({ url, freq });
+        for (auto& w : words) {
+            int wordId = -1;
+            string sql = "SELECT id FROM words WHERE word = '" + w + "';";
+            if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL) != SQLITE_OK) {
+                cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << endl;
             }
+            else if (sqlite3_step(stmt) == SQLITE_ROW)
+                wordId = sqlite3_column_int(stmt, 0);
             sqlite3_finalize(stmt);
 
-            sort(docs.begin(), docs.end(), [](auto& a, auto& b) {
-                return a.second > b.second;
-                });
+            //vector<pair<string, int>> docs;
+
+            if (wordId != -1) {
+                sql = "SELECT documents.url, word_occurrences.frequency "
+                    "FROM word_occurrences "
+                    "JOIN documents ON documents.id = word_occurrences.document_id "
+                    "WHERE word_occurrences.word_id = " + to_string(wordId) + ";";
+
+                sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL);
+                while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    string url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                    int freq = sqlite3_column_int(stmt, 1);
+                    //docs.push_back({ url, freq });
+                    score[url] += freq;
+                }
+                sqlite3_finalize(stmt);
+            }
         }
+        vector<pair<string, int>> docs(score.begin(), score.end());
+
+        sort(docs.begin(), docs.end(), [](auto& a, auto& b) {
+            return a.second > b.second;
+            });
 
         sqlite3_close(db);
 
