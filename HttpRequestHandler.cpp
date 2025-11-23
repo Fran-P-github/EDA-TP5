@@ -17,6 +17,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "HttpRequestHandler.h"
 
@@ -120,36 +121,77 @@ bool HttpRequestHandler::handleRequest(string url,
 
         sqlite3_stmt* stmt;
 
+        // Split and deduplicate query words: require each unique searched word to appear at least once
 		std::vector<std::string> words = splitBySpaces(searchString);
-        unordered_map<string, int> score;
+        std::unordered_set<std::string> uniqueSet;
+        for (auto &w : words) {
+            if (!w.empty()) uniqueSet.insert(w);
+        }
+        std::vector<std::string> queryWords(uniqueSet.begin(), uniqueSet.end());
 
-        for (auto& w : words) {
-            int wordId = -1;
-            string sql = "SELECT id FROM words WHERE word = '" + w + "';";
-            if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL) != SQLITE_OK) {
-                cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << endl;
-            }
-            else if (sqlite3_step(stmt) == SQLITE_ROW)
-                wordId = sqlite3_column_int(stmt, 0);
-            sqlite3_finalize(stmt);
+        unordered_map<string, int> score;            // sum of frequencies per document
+        unordered_map<string, int> termsFoundCount;  // how many distinct query words found in each document
 
+<<<<<<< Updated upstream
             if (wordId != -1) {
+=======
+        bool missingWordGlobally = false;
+
+        if (!queryWords.empty()) {
+            for (auto& w : queryWords) {
+                int wordId = -1;
+                string sql = "SELECT id FROM words WHERE word = '" + w + "';";
+                if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL) != SQLITE_OK) {
+                    cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << endl;
+                }
+                else if (sqlite3_step(stmt) == SQLITE_ROW) {
+                    wordId = sqlite3_column_int(stmt, 0);
+                }
+                sqlite3_finalize(stmt);
+
+                // If a search word is not in the DB at all, no document can match all words.
+                if (wordId == -1) {
+                    missingWordGlobally = true;
+                    break;
+                }
+
+>>>>>>> Stashed changes
                 sql = "SELECT documents.url, word_occurrences.frequency "
                     "FROM word_occurrences "
                     "JOIN documents ON documents.id = word_occurrences.document_id "
                     "WHERE word_occurrences.word_id = " + to_string(wordId) + ";";
 
-                sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL);
+                if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL) != SQLITE_OK) {
+                    cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << endl;
+                    continue;
+                }
+
                 while (sqlite3_step(stmt) == SQLITE_ROW) {
                     string url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
                     int freq = sqlite3_column_int(stmt, 1);
-                    //docs.push_back({ url, freq });
                     score[url] += freq;
+                    termsFoundCount[url] += 1; // each row corresponds to this word appearing in that document
                 }
                 sqlite3_finalize(stmt);
             }
         }
-        vector<pair<string, int>> docs(score.begin(), score.end());
+
+        vector<pair<string, int>> docs;
+
+        // If any searched word is missing globally, return zero results.
+        if (!missingWordGlobally && !queryWords.empty()) {
+            // Only include documents that contain all query words at least once
+            for (const auto& kv : score) {
+                const string& docUrl = kv.first;
+                int totalFreq = kv.second;
+                auto it = termsFoundCount.find(docUrl);
+                if (it != termsFoundCount.end() && it->second == static_cast<int>(queryWords.size())) {
+                    docs.emplace_back(docUrl, totalFreq);
+                }
+            }
+        } else if (queryWords.empty()) {
+            // empty query -> no results (preserve previous behavior)
+        }
 
         sort(docs.begin(), docs.end(), [](auto& a, auto& b) {
             return a.second > b.second;
