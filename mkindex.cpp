@@ -29,6 +29,16 @@ static string removeHTMLTags(const string& html);
 static vector<string> extractWords(const string& text);
 static void indexDocument(sqlite3* database, const string& documentUrl, const vector<string>& words);
 
+/**
+ * @brief Inserta un documento y sus palabras asociadas en la base de datos.
+ *
+ * Inserta el documento (si no existe), obtiene su ID, calcula la frecuencia
+ * de cada palabra y las inserta en las tablas `words` y `word_occurrences`.
+ *
+ * @param database Puntero a la base de datos SQLite.
+ * @param documentUrl Ruta URL del documento (ej: "/wiki/algo.html").
+ * @param words Vector con todas las palabras extraídas del documento.
+ */
 void indexDocument(sqlite3* database, const string& documentUrl, const vector<string>& words) {
     string sql = "INSERT OR IGNORE INTO documents(url) VALUES('" + documentUrl + "');";
     char* databaseErrorMessage;
@@ -62,14 +72,20 @@ void indexDocument(sqlite3* database, const string& documentUrl, const vector<st
         else {
             wordId = it->second;
         }
-        sql ="INSERT OR REPLACE INTO word_occurrences (word_id, document_id, frequency)"
-             "VALUES ('" + to_string(wordId) + "','" + to_string(documentId) + "','" + to_string(frequency) + "');";
+        sql = "INSERT OR REPLACE INTO word_occurrences (word_id, document_id, frequency)"
+            "VALUES ('" + to_string(wordId) + "','" + to_string(documentId) + "','" + to_string(frequency) + "');";
         if (sqlite3_exec(database, sql.c_str(), NULL, 0, &databaseErrorMessage) != SQLITE_OK) {
             cout << "Error: " << sqlite3_errmsg(database) << endl;
         }
     }
 }
 
+/**
+ * @brief Lee el contenido completo de un archivo.
+ *
+ * @param filepath Ruta del archivo a leer.
+ * @return string Contenido completo del archivo en texto.
+ */
 static string readFile(const string& filepath) {
     ifstream file(filepath);
     if (!file.is_open()) {
@@ -82,7 +98,14 @@ static string readFile(const string& filepath) {
     return buffer.str();
 }
 
-
+/**
+ * @brief Elimina etiquetas HTML del texto manteniendo solo contenido visible.
+ *
+ * Recorre el texto carácter por carácter ignorando todo lo que esté entre '<' y '>'.
+ *
+ * @param html Texto original con etiquetas HTML.
+ * @return string Texto plano sin etiquetas HTML.
+ */
 static string removeHTMLTags(const string& html) {
     string text;
     bool insideTag = false;
@@ -94,6 +117,14 @@ static string removeHTMLTags(const string& html) {
     return text;
 }
 
+/**
+ * @brief Extrae todas las palabras alfanuméricas de un texto.
+ *
+ * Convierte todas las letras a minúsculas. Las palabras consisten solo en caracteres alfanuméricos.
+ *
+ * @param text Texto del cual extraer palabras.
+ * @return vector<string> Lista de palabras en minúsculas.
+ */
 static vector<string> extractWords(const string& text) {
     vector<string> words;
     string word;
@@ -110,17 +141,38 @@ static vector<string> extractWords(const string& text) {
     return words;
 }
 
-static int onDatabaseEntry(void *userdata,
-                           int argc,
-                           char **argv,
-                           char **azColName)
+/**
+ * @brief Callback para recuperar un valor entero de una consulta SQLite.
+ *
+ * Se usa para obtener el ID de una fila recién insertada o buscada.
+ *
+ * @param userdata Puntero que recibe el entero convertido.
+ * @param argc Cantidad de columnas.
+ * @param argv Valores de las columnas.
+ * @param azColName Nombres de las columnas.
+ * @return int Siempre retorna 0 para indicar éxito.
+ */
+static int onDatabaseEntry(void* userdata,
+    int argc,
+    char** argv,
+    char** azColName)
 {
     *((int*)userdata) = stoi(argv[0]);
     return 0;
 }
 
+/**
+ * @brief Punto de entrada principal del programa.
+ *
+ * Procesa archivos HTML en `wwwPath/wiki`, extrae su contenido,
+ * lo tokeniza en palabras y crea un índice persistente en SQLite.
+ *
+ * @param argc Cantidad de argumentos.
+ * @param argv Lista de argumentos.
+ * @return int Código de salida del programa.
+ */
 int main(int argc,
-         const char *argv[])
+    const char* argv[])
 {
     wordIdCache.clear();
     CommandLineParser parser(argc, argv);
@@ -139,9 +191,9 @@ int main(int argc,
 
     wwwPath = parser.getOption("-h");
 
-    char *databaseFile = "index.db";
-    sqlite3 *database;
-    char *databaseErrorMessage;
+    char* databaseFile = "index.db";
+    sqlite3* database;
+    char* databaseErrorMessage;
 
     // Open database file
     cout << "Opening database..." << endl;
@@ -155,47 +207,47 @@ int main(int argc,
     // Create a sample table
     cout << "Creating table..." << endl;
     if (sqlite3_exec(database,
-                        "CREATE TABLE IF NOT EXISTS documents("
-                            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                            "url TEXT UNIQUE NOT NULL"
-                        ");"
-                        "CREATE TABLE IF NOT EXISTS words("
-                            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                            "word TEXT UNIQUE NOT NULL"
-                        ");"
-                        "CREATE TABLE IF NOT EXISTS word_occurrences("
-                            "word_id INTEGER,"
-                            "document_id INTEGER,"
-                            "frequency INTEGER,"
-                            "FOREIGN KEY(word_id) REFERENCES words(id),"
-                            "FOREIGN KEY(document_id) REFERENCES documents(id)"
-                        ");",
-                     NULL,
-                     0,
-                     &databaseErrorMessage) != SQLITE_OK)
+        "CREATE TABLE IF NOT EXISTS documents("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "url TEXT UNIQUE NOT NULL"
+        ");"
+        "CREATE TABLE IF NOT EXISTS words("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "word TEXT UNIQUE NOT NULL"
+        ");"
+        "CREATE TABLE IF NOT EXISTS word_occurrences("
+        "word_id INTEGER,"
+        "document_id INTEGER,"
+        "frequency INTEGER,"
+        "FOREIGN KEY(word_id) REFERENCES words(id),"
+        "FOREIGN KEY(document_id) REFERENCES documents(id)"
+        ");",
+        NULL,
+        0,
+        &databaseErrorMessage) != SQLITE_OK)
         cout << "Error: " << sqlite3_errmsg(database) << endl;
 
     // Delete previous entries if table already existed
     cout << "Deleting previous entries..." << endl;
     if (sqlite3_exec(database,
-                     "DELETE FROM documents;",
-                     NULL,
-                     0,
-                     &databaseErrorMessage) != SQLITE_OK)
+        "DELETE FROM documents;",
+        NULL,
+        0,
+        &databaseErrorMessage) != SQLITE_OK)
         cout << "Error: " << sqlite3_errmsg(database) << endl;
 
     if (sqlite3_exec(database,
-                    "DELETE FROM words;",
-                    NULL,
-                    0,
-                    &databaseErrorMessage) != SQLITE_OK)
+        "DELETE FROM words;",
+        NULL,
+        0,
+        &databaseErrorMessage) != SQLITE_OK)
         cout << "Error: " << sqlite3_errmsg(database) << endl;
 
     if (sqlite3_exec(database,
-                    "DELETE FROM word_occurrences;",
-                    NULL,
-                    0,
-                    &databaseErrorMessage) != SQLITE_OK)
+        "DELETE FROM word_occurrences;",
+        NULL,
+        0,
+        &databaseErrorMessage) != SQLITE_OK)
         cout << "Error: " << sqlite3_errmsg(database) << endl;
 
 
@@ -243,7 +295,7 @@ int main(int argc,
         NULL,
         0,
         &databaseErrorMessage) != SQLITE_OK)
-            cout << "Error: " << sqlite3_errmsg(database) << endl;
+        cout << "Error: " << sqlite3_errmsg(database) << endl;
 
     // Close database
     cout << "Closing database..." << endl;

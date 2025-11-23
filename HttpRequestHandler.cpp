@@ -111,7 +111,6 @@ bool HttpRequestHandler::handleRequest(string url,
         </div>\
         ");
 
-        // YOUR JOB: fill in results
         float searchTime = 0.1F;
 
         auto start = chrono::high_resolution_clock::now();
@@ -133,8 +132,6 @@ bool HttpRequestHandler::handleRequest(string url,
             else if (sqlite3_step(stmt) == SQLITE_ROW)
                 wordId = sqlite3_column_int(stmt, 0);
             sqlite3_finalize(stmt);
-
-            //vector<pair<string, int>> docs;
 
             if (wordId != -1) {
                 sql = "SELECT documents.url, word_occurrences.frequency "
