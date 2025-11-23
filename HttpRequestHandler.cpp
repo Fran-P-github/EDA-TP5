@@ -48,7 +48,7 @@ HttpRequestHandler::HttpRequestHandler(string homePath)
  * @return true URL valid
  * @return false URL invalid
  */
-bool HttpRequestHandler::serve(string url, vector<char> &response)
+bool HttpRequestHandler::serve(string url, vector<char>& response)
 {
     // Blocks directory traversal
     // e.g. https://www.example.com/show_file.php?file=../../MyFile
@@ -77,8 +77,8 @@ bool HttpRequestHandler::serve(string url, vector<char> &response)
 }
 
 bool HttpRequestHandler::handleRequest(string url,
-                                               HttpArguments arguments,
-                                               vector<char> &response)
+    HttpArguments arguments,
+    vector<char>& response)
 {
     string searchPage = "/search";
     if (url.substr(0, searchPage.size()) == searchPage)
@@ -107,7 +107,7 @@ bool HttpRequestHandler::handleRequest(string url,
         <div class=\"search\">\
             <form action=\"/search\" method=\"get\">\
                 <input type=\"text\" name=\"q\" value=\"" +
-                                       searchString + "\" autofocus>\
+            searchString + "\" autofocus>\
             </form>\
         </div>\
         ");
@@ -122,9 +122,9 @@ bool HttpRequestHandler::handleRequest(string url,
         sqlite3_stmt* stmt;
 
         // Split and deduplicate query words: require each unique searched word to appear at least once
-		std::vector<std::string> words = splitBySpaces(searchString);
+        std::vector<std::string> words = splitBySpaces(searchString);
         std::unordered_set<std::string> uniqueSet;
-        for (auto &w : words) {
+        for (auto& w : words) {
             if (!w.empty()) uniqueSet.insert(w);
         }
         std::vector<std::string> queryWords(uniqueSet.begin(), uniqueSet.end());
@@ -132,9 +132,6 @@ bool HttpRequestHandler::handleRequest(string url,
         unordered_map<string, int> score;            // sum of frequencies per document
         unordered_map<string, int> termsFoundCount;  // how many distinct query words found in each document
 
-<<<<<<< Updated upstream
-            if (wordId != -1) {
-=======
         bool missingWordGlobally = false;
 
         if (!queryWords.empty()) {
@@ -155,7 +152,6 @@ bool HttpRequestHandler::handleRequest(string url,
                     break;
                 }
 
->>>>>>> Stashed changes
                 sql = "SELECT documents.url, word_occurrences.frequency "
                     "FROM word_occurrences "
                     "JOIN documents ON documents.id = word_occurrences.document_id "
@@ -189,7 +185,8 @@ bool HttpRequestHandler::handleRequest(string url,
                     docs.emplace_back(docUrl, totalFreq);
                 }
             }
-        } else if (queryWords.empty()) {
+        }
+        else if (queryWords.empty()) {
             // empty query -> no results (preserve previous behavior)
         }
 
@@ -208,10 +205,10 @@ bool HttpRequestHandler::handleRequest(string url,
 
         // Print search results
         responseString += "<div class=\"results\">" + to_string(results.size()) +
-                          " results (" + to_string(searchTime) + " seconds):</div>";
-        for (auto &result : results)
+            " results (" + to_string(searchTime) + " seconds):</div>";
+        for (auto& result : results)
             responseString += "<div class=\"result\"><a href=\"" +
-                              result + "\">" + result + "</a></div>";
+            result + "\">" + result + "</a></div>";
 
         // Trailer
         responseString += "    </article>\
