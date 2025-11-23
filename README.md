@@ -25,14 +25,11 @@
 
 - Genera tres tablas:
 
-- documents(id, url)
-- Guarda cada archivo indexado
+	- documents(id, url) : Guarda cada archivo indexado
 
-- words(id, word)
-- Una entrada por cada palabra única
+	- words(id, word) : Una entrada por cada palabra única
 
-- word_occurrences(word_id, document_id, frequency)
-- Guarda cuántas veces aparece cada palabra en cada documento
+	- word_occurrences(word_id, document_id, frequency) : Guarda cuántas veces aparece cada palabra en cada documento
 
 ## Optimización
 
@@ -54,22 +51,23 @@
 - Consulta de cada palabra
 - Para cada palabra:
 
-- Se busca su word_id en la tabla words
+	- Se busca su word_id en la tabla words
 
-- Si existe, se obtienen todos los documentos donde aparece
+	- Si existe, se obtienen todos los documentos donde aparece
 
-- Se acumula la frecuencia en un mapa score[url] += freq
+	- Se acumula la frecuencia en un mapa score[url] += freq
 
-- Esto permite búsquedas multi-palabra sumando relevancias.
+	- Esto permite búsquedas multi-palabra sumando relevancias.
 
 ### Ranking de Resultados
 - Se transforma el mapa en un vector y se ordena:
 
-- Documentos con mayor frecuencia total primero
+	- Documentos con mayor frecuencia total primero
 
-- Documentos que contienen más palabras de la query quedan arriba
+	- Documentos que contienen más palabras de la query quedan arriba
 
 - Generación de la Página HTML
+- Devolución de tiempo de busqueda
 - Se construye dinámicamente la sección de resultados con links a las páginas encontradas.
 
 ## Seguridad
