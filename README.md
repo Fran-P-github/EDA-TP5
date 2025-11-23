@@ -81,3 +81,27 @@
 - SQLite no permite múltiples sentencias por consulta preparada
 
 - Errores de sintaxis solo afectan esa palabra, no el sistema
+
+## Compilacion del codigo
+
+La carpeta "www" debera estar ubicada dentro del directorio principal junto con los archivos del codigo.  
+Se deberán tener instaladas las librerias `libmicrohttpd` y `sqlite3` a través de los respectivos comandos:
+
+```
+vcpkg install libmicrohttpd
+vcpkg install sqlite3
+```
+
+Se deberá abrir una terminal en `out\build\x64-Debug` y ejecutar el siguiente comando para generar la base de datos:
+
+```
+.\mkindex.exe  -h ../../../www
+```
+
+Una vez generada, se deberá ejecutar el servidor local a traves del siguiente comando:
+
+```
+.\edahttpd.exe -h ../../../www
+```
+
+Finalmente se podrá acceder a EDAGoogle desde la URL https://localhost:8000. 
